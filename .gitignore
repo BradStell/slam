@@ -1,0 +1,26 @@
+# Binaries
+/slam
+/dist/
+*.exe
+*.test
+*.out
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Coverage
+coverage.out
+coverage.html
+
+# Local config
+.env
+.env.local
+
+# Wails (future, v1.x)
+build/
+frontend/dist/
+frontend/node_modules/
