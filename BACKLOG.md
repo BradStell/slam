@@ -7,7 +7,7 @@
 Goal: `slam -n 100 https://example.com/` runs end-to-end and prints a sensible summary.
 
 - [x] **M1.1 — Repo init.** Module path, package layout (`cmd/`, `internal/`, `engine/`), `.gitignore`, MIT license, Makefile, README stub, this backlog. Deps: —. Done when: `go build ./...` passes.
-- [ ] **M1.2 — Engine: core types.** `Target`, `Plan`, `Result`, `Snapshot`, `Summary`, `LatencyStats`, `Reporter` interface in package `engine`. Stub `Runner.Run()` returning empty `Summary`. Deps: M1.1. Done when: types compile, stub runner returns.
+- [x] **M1.2 — Engine: core types.** `Target`, `Plan`, `Result`, `Snapshot`, `Summary`, `LatencyStats`, `Reporter` interface in package `engine`. Stub `Runner.Run()` returning empty `Summary`. Deps: M1.1. Done when: types compile, stub runner returns.
 - [ ] **M1.3 — Engine: HTTP transport.** Function: `Target` → `*http.Request` → execute via `*http.Client` → `Result`. Handles errors (timeout, conn refused, DNS). Deps: M1.2. Done when: unit test against `httptest.Server` returns expected status/latency.
 - [ ] **M1.4 — Engine: worker pool.** N goroutines pulling tokens from a channel, calling transport, sending `Result`s out. Deps: M1.3. Done when: 100 workers fire 1000 requests against test server, `-race` clean.
 - [ ] **M1.5 — Engine: aggregator.** Goroutine consuming `Result`s, maintaining counters (sent, errors, status map) and one HDR histogram (service latency). Produces final `Summary`. Deps: M1.2. Done when: totals + percentiles match a known fixture.
