@@ -1,0 +1,130 @@
+package engine
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestRunner_Run_RequestBounded(t *testing.T) {
+	var hits int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt64(&hits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	r := &Runner{
+		Target: Target{URL: srv.URL},
+		Plan:   Plan{Concurrency: 10, Requests: 100, Timeout: 5 * time.Second},
+	}
+	sum, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if sum.TotalSent != 100 {
+		t.Errorf("TotalSent = %d, want 100", sum.TotalSent)
+	}
+	if sum.Errors != 0 {
+		t.Errorf("Errors = %d, want 0", sum.Errors)
+	}
+	if sum.StatusCodes[200] != 100 {
+		t.Errorf("StatusCodes[200] = %d, want 100", sum.StatusCodes[200])
+	}
+	if got := atomic.LoadInt64(&hits); got != 100 {
+		t.Errorf("server hits = %d, want 100", got)
+	}
+	if sum.Throughput <= 0 {
+		t.Errorf("Throughput = %v, want > 0", sum.Throughput)
+	}
+}
+
+func TestRunner_Run_RejectsInvalidPlan(t *testing.T) {
+	cases := []struct {
+		name string
+		plan Plan
+	}{
+		{"zero concurrency", Plan{Requests: 1}},
+		{"zero requests", Plan{Concurrency: 1}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &Runner{Target: Target{URL: "http://example.com"}, Plan: tc.plan}
+			if _, err := r.Run(context.Background()); err == nil {
+				t.Fatal("expected error, got nil")
+			}
+		})
+	}
+}
+
+func TestRunner_Run_CallsReporter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	rep := &recordingReporter{}
+	r := &Runner{
+		Target:   Target{URL: srv.URL},
+		Plan:     Plan{Concurrency: 2, Requests: 5, Timeout: 5 * time.Second},
+		Reporter: rep,
+	}
+	if _, err := r.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !rep.startCalled {
+		t.Error("Reporter.OnStart not called")
+	}
+	if rep.finish == nil {
+		t.Fatal("Reporter.OnFinish not called")
+	}
+	if rep.finish.TotalSent != 5 {
+		t.Errorf("OnFinish summary TotalSent = %d, want 5", rep.finish.TotalSent)
+	}
+}
+
+func TestRunner_Run_ContextCancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(75 * time.Millisecond)
+		cancel()
+	}()
+
+	r := &Runner{
+		Target: Target{URL: srv.URL},
+		Plan:   Plan{Concurrency: 5, Requests: 10000, Timeout: 5 * time.Second},
+	}
+	sum, err := r.Run(ctx)
+	if err == nil {
+		t.Error("expected ctx error, got nil")
+	}
+	if sum == nil {
+		t.Fatal("Summary should be non-nil even on cancel")
+	}
+	if sum.TotalSent >= 10000 {
+		t.Errorf("TotalSent = %d, expected < 10000 after cancel", sum.TotalSent)
+	}
+}
+
+type recordingReporter struct {
+	startCalled bool
+	startPlan   Plan
+	ticks       []Snapshot
+	finish      *Summary
+}
+
+func (r *recordingReporter) OnStart(p Plan)         { r.startCalled = true; r.startPlan = p }
+func (r *recordingReporter) OnTick(s Snapshot)      { r.ticks = append(r.ticks, s) }
+func (r *recordingReporter) OnFinish(sum *Summary)  { r.finish = sum }
