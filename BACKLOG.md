@@ -1,6 +1,6 @@
 # slam — v1 Backlog
 
-27 atomic items across 4 milestones. Work top-to-bottom within a milestone; deps marked when they cross items.
+32 atomic items across 5 milestones. Work top-to-bottom within a milestone; deps marked when they cross items.
 
 ## M1 — Walking skeleton
 
@@ -32,18 +32,28 @@ Goal: full v1 surface — rate limiting, ramp, indefinite mode, all HTTP knobs, 
 - [ ] **M2.10 — CLI: live TTY output.** Reporter impl: status line refreshed ~250ms with elapsed, sent, errors, current RPS, current p99. Auto-disabled when stdout isn't a TTY. Deps: M1.9. Done when: TTY shows refreshing line; piped output is plain.
 - [ ] **M2.11 — CLI: JSON output.** `-o json` prints final `Summary` as JSON, including compact-serialized histogram. Deps: M1.9. Done when: `slam -o json -n 10 url | jq` produces parseable JSON with all stats.
 
-## M3 — v1 Stretch (in if cheap)
+## M3 — Saturation testing
 
-- [ ] **M3.1 — CLI: YAML config file.** `-f config.yaml` loads run config; flags override file values. Deps: M2.7. Done when: a YAML file with every option produces identical run to equivalent flags.
-- [ ] **M3.2 — Engine: SQLite persistence.** Reporter impl writes run metadata + serialized histogram to `~/.slam/runs.db` using pure-Go driver. Deps: M2.4. Done when: after a run, a row appears in `runs` table with retrievable histogram.
+Goal: answer "how many requests per second can my server handle?" by stepping load up until the target degrades, then reporting the curve and the tipping point.
 
-## M4 — Release & polish
+- [ ] **M3.1 — Engine: stepped scheduler.** Generalize M2.5's linear ramp into arbitrary `Plan.Stages []Stage{Duration, RPS}`. When `Stages` is set it overrides `RPS`/`RampUp`/`Duration`. Deps: M2.5. Done when: a 3-stage plan (10s @ 100 RPS, 10s @ 200, 10s @ 400) holds each step within ±5% of target.
+- [ ] **M3.2 — Engine: per-stage aggregation.** Aggregator emits one `StageResult` per stage (counters + service & response histograms) alongside the overall `Summary`. Deps: M3.1, M1.5, M2.4. Done when: fixture with two stages produces two distinct histograms whose totals sum to the run total.
+- [ ] **M3.3 — Engine: stop conditions.** `Plan.StopOn{MaxErrorRate, MaxP99, MinAchievedRatio}`. Runner watches live snapshots and cancels `ctx` when any rule trips, recording `StopReason` on the Summary. Deps: M3.2, M2.2. Done when: an httptest server returning 5xx after stage 2 stops the run with `StopReason=ErrorRate`.
+- [ ] **M3.4 — CLI: `--scale-up` ergonomics.** `--scale-up START:PEAK:STEP --hold DURATION` expands to a `[]Stage`. `--stop-on-errors PCT --stop-on-p99 DURATION` configures stop rules. Deps: M3.1, M3.3, M2.7. Done when: `slam url --scale-up 50:1000:50 --hold 10s --stop-on-errors 5%` runs the right shape.
+- [ ] **M3.5 — CLI: stepped table output + verdict.** Saturation runs print one row per stage (target RPS, achieved, p50, p99, error %), mark the stop-triggering row, and emit a one-line verdict on knee location (throughput plateau or p99 step-up). Deps: M3.2, M3.3, M2.11. Done when: a known-good httpbin-like server with deterministic 200ms p99 above 500 RPS produces a verdict line identifying the knee within ±1 stage.
 
-- [ ] **M4.1 — Test suite consolidation.** Table-driven tests covering scheduler, aggregator, URL parsing, transport, signal handling. Deps: alongside everything. Done when: `go test ./... -race` clean in CI.
-- [ ] **M4.2 — CI pipeline.** GitHub Actions: golangci-lint, `go test -race`, build matrix (darwin/linux/windows × amd64/arm64). Deps: M4.1. Done when: PRs run all three checks.
-- [ ] **M4.3 — GoReleaser config.** Cross-platform binaries + tarballs, signed + checksummed, attached to GitHub Release on tag push. Deps: M4.2. Done when: pushing `v0.1.0` produces a published release with binaries.
-- [ ] **M4.4 — Homebrew tap.** Separate `homebrew-tap` repo, formula auto-updated by GoReleaser. Deps: M4.3. Done when: `brew install bradstell/tap/slam` works on macOS.
-- [ ] **M4.5 — README + quickstart.** Install instructions, 3–5 example commands, "what's next" pointer. Deps: M4.3. Done when: a stranger could install + run their first test from the README alone.
+## M4 — v1 Stretch (in if cheap)
+
+- [ ] **M4.1 — CLI: YAML config file.** `-f config.yaml` loads run config; flags override file values. Stages are expressible. Deps: M2.7, M3.1. Done when: a YAML file with every option produces identical run to equivalent flags.
+- [ ] **M4.2 — Engine: SQLite persistence.** Reporter impl writes run metadata + serialized histograms (per stage + overall) to `~/.slam/runs.db` using pure-Go driver. Deps: M2.4, M3.2. Done when: after a run, a row appears in `runs` table with retrievable histograms.
+
+## M5 — Release & polish
+
+- [ ] **M5.1 — Test suite consolidation.** Table-driven tests covering scheduler, aggregator, URL parsing, transport, signal handling, stages, stop conditions. Deps: alongside everything. Done when: `go test ./... -race` clean in CI.
+- [ ] **M5.2 — CI pipeline.** GitHub Actions: golangci-lint, `go test -race`, build matrix (darwin/linux/windows × amd64/arm64). Deps: M5.1. Done when: PRs run all three checks.
+- [ ] **M5.3 — GoReleaser config.** Cross-platform binaries + tarballs, signed + checksummed, attached to GitHub Release on tag push. Deps: M5.2. Done when: pushing `v0.1.0` produces a published release with binaries.
+- [ ] **M5.4 — Homebrew tap.** Separate `homebrew-tap` repo, formula auto-updated by GoReleaser. Deps: M5.3. Done when: `brew install bradstell/tap/slam` works on macOS.
+- [ ] **M5.5 — README + quickstart.** Install instructions, 3–5 example commands (incl. saturation), "what's next" pointer. Deps: M5.3. Done when: a stranger could install + run their first saturation test from the README alone.
 
 ## Out of scope (v2+)
 
@@ -62,7 +72,8 @@ Goal: full v1 surface — rate limiting, ramp, indefinite mode, all HTTP knobs, 
 ## Architectural notes
 
 - `engine` is a pure library — CLI and (future) GUI are thin shells over it.
-- HDR histogram (`HdrHistogram-go`) chosen for accuracy + mergeability (matters for distributed mode later).
+- HDR histogram (`HdrHistogram-go`) chosen for accuracy + mergeability (matters for per-stage aggregation in M3 and distributed mode in v2).
 - Coordinated-omission correction baked in from M2.3+: store both `ScheduledAt` and `SentAt` per request, maintain two histograms (Service vs Response).
+- Saturation testing (M3) builds on the rate scheduler from M2.5 — `Plan.Stages` is a generalization of `RampUp`. Per-stage histograms reuse the aggregator pattern.
 - Concrete types in v1 (no premature interfaces). When scenarios and non-HTTP transports arrive in v2, promote `Target` → `RequestSource` and `*http.Client` → `Transport` interfaces.
 - Pure-Go SQLite (`modernc.org/sqlite`) keeps cross-compilation simple — no CGO required.
