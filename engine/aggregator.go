@@ -6,25 +6,32 @@ import (
 	"github.com/HdrHistogram/hdrhistogram-go"
 )
 
-// aggregator consumes Results and produces a Summary. It maintains running
-// counters and an HDR histogram for service latency (DoneAt - SentAt). The
-// Response histogram (coordinated-omission corrected) is added in M2.4.
+// aggregator consumes Results and produces a Summary.
+//
+// Two histograms are maintained side by side:
+//
+//   - service: DoneAt - SentAt — what the server actually took to handle
+//     the request once it was sent.
+//   - response: DoneAt - ScheduledAt — what a client on a fixed schedule
+//     would have observed, including any time the request waited because
+//     the worker pool was busy. Higher than service under server stalls;
+//     this is the coordinated-omission-corrected number.
 type aggregator struct {
 	sent        int64
 	errors      int64
 	statusCodes map[int]int64
 	service     *hdrhistogram.Histogram
+	response    *hdrhistogram.Histogram
 	started     time.Time
 }
 
-// histogramRange is wide enough for any sane HTTP request; values above the
-// upper bound are clamped to it rather than rejected.
 const histogramMaxMicros = int64(5 * time.Minute / time.Microsecond)
 
 func newAggregator(start time.Time) *aggregator {
 	return &aggregator{
 		statusCodes: map[int]int64{},
 		service:     hdrhistogram.New(1, histogramMaxMicros, 3),
+		response:    hdrhistogram.New(1, histogramMaxMicros, 3),
 		started:     start,
 	}
 }
@@ -38,15 +45,22 @@ func (a *aggregator) record(r Result) {
 		a.statusCodes[r.Status]++
 	}
 	if !r.SentAt.IsZero() && !r.DoneAt.IsZero() && r.DoneAt.After(r.SentAt) {
-		us := r.DoneAt.Sub(r.SentAt).Microseconds()
-		if us < 1 {
-			us = 1
-		}
-		if us > histogramMaxMicros {
-			us = histogramMaxMicros
-		}
-		_ = a.service.RecordValue(us)
+		recordLatency(a.service, r.DoneAt.Sub(r.SentAt))
 	}
+	if !r.ScheduledAt.IsZero() && !r.DoneAt.IsZero() && r.DoneAt.After(r.ScheduledAt) {
+		recordLatency(a.response, r.DoneAt.Sub(r.ScheduledAt))
+	}
+}
+
+func recordLatency(h *hdrhistogram.Histogram, d time.Duration) {
+	us := d.Microseconds()
+	if us < 1 {
+		us = 1
+	}
+	if us > histogramMaxMicros {
+		us = histogramMaxMicros
+	}
+	_ = h.RecordValue(us)
 }
 
 // run consumes results from in until it is closed, then returns the Summary.
@@ -73,6 +87,7 @@ func (a *aggregator) summary(plan Plan, target Target, ended time.Time) *Summary
 		StatusCodes: a.statusCodes,
 		Throughput:  throughput,
 		Service:     statsFromHistogram(a.service),
+		Response:    statsFromHistogram(a.response),
 	}
 }
 

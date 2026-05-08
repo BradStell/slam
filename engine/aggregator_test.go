@@ -87,6 +87,43 @@ func TestAggregator_ThroughputIsPerSecond(t *testing.T) {
 	}
 }
 
+func TestAggregator_CoordinatedOmissionCorrection(t *testing.T) {
+	a := newAggregator(time.Now())
+	base := time.Now()
+	const interval = 10 * time.Millisecond // 100 RPS
+
+	// 90 fast requests: server takes 5ms, sent on schedule.
+	for i := 0; i < 90; i++ {
+		sched := base.Add(time.Duration(i) * interval)
+		sent := sched
+		done := sent.Add(5 * time.Millisecond)
+		a.record(Result{ScheduledAt: sched, SentAt: sent, DoneAt: done, Status: 200})
+	}
+	// 10 stalled requests: workers were tied up; each sent 100ms late, but
+	// server still only took 5ms to handle them once they ran.
+	for j := 0; j < 10; j++ {
+		sched := base.Add(time.Duration(90+j) * interval)
+		sent := sched.Add(100 * time.Millisecond)
+		done := sent.Add(5 * time.Millisecond)
+		a.record(Result{ScheduledAt: sched, SentAt: sent, DoneAt: done, Status: 200})
+	}
+
+	sum := a.summary(Plan{}, Target{}, time.Now())
+
+	// Server-side: every request was ~5ms.
+	if sum.Service.P99 > 10*time.Millisecond {
+		t.Errorf("Service.P99 = %v, want ≤10ms (server work was uniform)", sum.Service.P99)
+	}
+	// Client-perceived: the stalled requests look like ~105ms (CO-corrected).
+	if sum.Response.P99 < 100*time.Millisecond {
+		t.Errorf("Response.P99 = %v, want ≥100ms (CO-corrected for stall)", sum.Response.P99)
+	}
+	if sum.Response.P99 <= sum.Service.P99 {
+		t.Errorf("Response.P99 (%v) should exceed Service.P99 (%v) under stall",
+			sum.Response.P99, sum.Service.P99)
+	}
+}
+
 func TestAggregator_EmptyHistogramYieldsZeroStats(t *testing.T) {
 	a := newAggregator(time.Now())
 	sum := a.summary(Plan{}, Target{}, time.Now())
