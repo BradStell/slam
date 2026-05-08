@@ -8,7 +8,11 @@ import (
 
 func TestSchedule_UnlimitedFiresFast(t *testing.T) {
 	in := make(chan token, 100)
-	if err := schedule(context.Background(), in, time.Now(), 0, 0, 50); err != nil {
+	cfg := scheduleConfig{
+		started:     time.Now(),
+		maxRequests: 50,
+	}
+	if err := schedule(context.Background(), in, cfg); err != nil {
 		t.Fatalf("schedule: %v", err)
 	}
 	close(in)
@@ -39,7 +43,8 @@ func TestSchedule_RateLimitedHitsTarget(t *testing.T) {
 	}()
 
 	start := time.Now()
-	err := schedule(context.Background(), in, start, rps, duration, 0)
+	cfg := scheduleConfig{started: start, rps: rps, duration: duration}
+	err := schedule(context.Background(), in, cfg)
 	elapsed := time.Since(start)
 	close(in)
 	if err != nil {
@@ -68,11 +73,11 @@ func TestSchedule_TokensCarryScheduledAt(t *testing.T) {
 	}()
 
 	start := time.Now()
-	err := schedule(context.Background(), in, start, rps, 0, 5)
-	close(in)
-	if err != nil {
+	cfg := scheduleConfig{started: start, rps: rps, maxRequests: 5}
+	if err := schedule(context.Background(), in, cfg); err != nil {
 		t.Fatalf("schedule: %v", err)
 	}
+	close(in)
 	tokens := <-drained
 
 	if len(tokens) != 5 {
@@ -100,9 +105,78 @@ func TestSchedule_CtxCancel(t *testing.T) {
 		cancel()
 	}()
 
-	err := schedule(ctx, in, time.Now(), 100, 5*time.Second, 0)
+	cfg := scheduleConfig{started: time.Now(), rps: 100, duration: 5 * time.Second}
+	err := schedule(ctx, in, cfg)
 	if err == nil {
 		t.Error("expected ctx error, got nil")
 	}
 	close(in)
+}
+
+func TestSchedule_RampUpReducesEarlyRate(t *testing.T) {
+	const (
+		rps  = 2000
+		ramp = 500 * time.Millisecond
+		win  = 250 * time.Millisecond
+	)
+	in := make(chan token, rps*2)
+	drained := make(chan int, 1)
+	go func() {
+		n := 0
+		for range in {
+			n++
+		}
+		drained <- n
+	}()
+
+	cfg := scheduleConfig{
+		started:  time.Now(),
+		rps:      rps,
+		rampUp:   ramp,
+		duration: win,
+	}
+	if err := schedule(context.Background(), in, cfg); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	close(in)
+	n := <-drained
+
+	// Without ramp: 250ms @ 2000 RPS = 500 tokens.
+	// With 500ms linear ramp, the first 250ms is at half-rate ≈ 125 tokens.
+	// Allow ±100 for timing slop.
+	if n < 75 || n > 225 {
+		t.Errorf("count = %d, want ~125 (ramp halves the early rate)", n)
+	}
+}
+
+func TestScheduledAtFor_RampUpClosedForm(t *testing.T) {
+	cfg := scheduleConfig{
+		started: time.Unix(0, 0),
+		rps:     1000,
+		rampUp:  10 * time.Second,
+	}
+	// At end of ramp, N(T) = R*T/2 = 5000 tokens fired.
+	// Token #5000 should be at t = ~10s.
+	got := scheduledAtFor(cfg, 5000)
+	want := 10 * time.Second
+	diff := got.Sub(cfg.started) - want
+	if diff < -5*time.Millisecond || diff > 5*time.Millisecond {
+		t.Errorf("token 5000 at %v, want ~%v (diff %v)", got.Sub(cfg.started), want, diff)
+	}
+
+	// Token #1250 should be at sqrt(2*10*1250/1000) = sqrt(25) = 5s.
+	got = scheduledAtFor(cfg, 1250)
+	want = 5 * time.Second
+	diff = got.Sub(cfg.started) - want
+	if diff < -5*time.Millisecond || diff > 5*time.Millisecond {
+		t.Errorf("token 1250 at %v, want ~%v (diff %v)", got.Sub(cfg.started), want, diff)
+	}
+
+	// Token #5001 should be at 10s + 1ms (steady-state at 1000 RPS).
+	got = scheduledAtFor(cfg, 5001)
+	want = 10*time.Second + time.Millisecond
+	diff = got.Sub(cfg.started) - want
+	if diff < -100*time.Microsecond || diff > 100*time.Microsecond {
+		t.Errorf("token 5001 at %v, want ~%v (diff %v)", got.Sub(cfg.started), want, diff)
+	}
 }

@@ -55,7 +55,13 @@ func (r *Runner) Run(ctx context.Context) (*Summary, error) {
 		close(poolDone)
 	}()
 
-	ctxErr := schedule(ctx, in, started, r.Plan.RPS, r.Plan.Duration, r.Plan.Requests)
+	ctxErr := schedule(ctx, in, scheduleConfig{
+		started:     started,
+		rps:         r.Plan.RPS,
+		rampUp:      r.Plan.RampUp,
+		duration:    r.Plan.Duration,
+		maxRequests: r.Plan.Requests,
+	})
 	close(in)
 
 	<-poolDone
