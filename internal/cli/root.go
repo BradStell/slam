@@ -21,6 +21,8 @@ histogram with coordinated-omission correction.`,
 		},
 	}
 	cmd.SetVersionTemplate("slam {{.Version}}\n")
+	cmd.PersistentFlags().IntP("concurrency", "c", 50, "number of concurrent workers")
+	cmd.PersistentFlags().IntP("requests", "n", 0, "total number of requests to send")
 	cmd.AddCommand(newRunCmd())
 	return cmd
 }
