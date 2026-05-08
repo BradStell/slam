@@ -12,11 +12,15 @@ histogram with coordinated-omission correction.`,
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: false,
+		Args:          cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: route URL-shaped first positional to implicit run.
+			if len(args) == 1 && looksLikeURL(args[0]) {
+				return runE(cmd, args)
+			}
 			return cmd.Help()
 		},
 	}
 	cmd.SetVersionTemplate("slam {{.Version}}\n")
+	cmd.AddCommand(newRunCmd())
 	return cmd
 }
