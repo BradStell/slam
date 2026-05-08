@@ -22,7 +22,7 @@ Goal: full v1 surface — rate limiting, ramp, indefinite mode, all HTTP knobs, 
 
 - [x] **M2.1 — Engine: duration-bounded run.** `Plan.Duration` support; runner stops after duration elapses. Deps: M1.6. Done when: `Duration: 5s` runs ~5s.
 - [x] **M2.2 — Engine: indefinite run + cancel.** When `Duration=0 && Requests=0`, run until `ctx` cancels. Returns partial summary. Deps: M2.1. Done when: `ctx.Cancel()` mid-run produces summary of work done.
-- [ ] **M2.3 — Engine: scheduler with rate limit.** Token generator at `Plan.RPS`. Tokens carry `ScheduledAt`. Workers record both `ScheduledAt` and `SentAt`. Deps: M1.6. Done when: `RPS=1000` over 10s averages 1000 ± 1%.
+- [x] **M2.3 — Engine: scheduler with rate limit.** Token generator at `Plan.RPS`. Tokens carry `ScheduledAt`. Workers record both `ScheduledAt` and `SentAt`. Deps: M1.6. Done when: `RPS=1000` over 10s averages 1000 ± 1%.
 - [ ] **M2.4 — Engine: coordinated-omission correction.** Aggregator maintains second histogram: Response (`DoneAt - ScheduledAt`). Deps: M2.3. Done when: injecting 100ms transport stall produces visibly higher Response p99 vs Service p99.
 - [ ] **M2.5 — Engine: ramp-up.** Token rate ramps linearly 0 → RPS over `Plan.RampUp`. Deps: M2.3. Done when: first 5s of `RampUp=10s, RPS=1000` averages closer to 250 than 1000.
 - [ ] **M2.6 — Engine: HTTP knobs.** Full `Target` support — method, headers, body, query params. Plus `Plan.Timeout`, keep-alive toggle, HTTP/2 toggle. Deps: M1.3. Done when: each knob has a unit test verifying it's actually applied.

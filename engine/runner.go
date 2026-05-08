@@ -55,29 +55,7 @@ func (r *Runner) Run(ctx context.Context) (*Summary, error) {
 		close(poolDone)
 	}()
 
-	ctxErr := func() error {
-		var deadline <-chan time.Time
-		if r.Plan.Duration > 0 {
-			timer := time.NewTimer(r.Plan.Duration)
-			defer timer.Stop()
-			deadline = timer.C
-		}
-
-		sent := 0
-		for {
-			if r.Plan.Requests > 0 && sent >= r.Plan.Requests {
-				return nil
-			}
-			select {
-			case in <- token{ScheduledAt: time.Now()}:
-				sent++
-			case <-deadline:
-				return nil
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}
-	}()
+	ctxErr := schedule(ctx, in, started, r.Plan.RPS, r.Plan.Duration, r.Plan.Requests)
 	close(in)
 
 	<-poolDone
