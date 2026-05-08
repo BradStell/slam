@@ -42,21 +42,38 @@ func TestRunner_Run_RequestBounded(t *testing.T) {
 	}
 }
 
-func TestRunner_Run_RejectsInvalidPlan(t *testing.T) {
-	cases := []struct {
-		name string
-		plan Plan
-	}{
-		{"zero concurrency", Plan{Requests: 1}},
-		{"zero requests", Plan{Concurrency: 1}},
+func TestRunner_Run_RejectsZeroConcurrency(t *testing.T) {
+	r := &Runner{Target: Target{URL: "http://example.com"}, Plan: Plan{Requests: 1}}
+	if _, err := r.Run(context.Background()); err == nil {
+		t.Fatal("expected error, got nil")
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			r := &Runner{Target: Target{URL: "http://example.com"}, Plan: tc.plan}
-			if _, err := r.Run(context.Background()); err == nil {
-				t.Fatal("expected error, got nil")
-			}
-		})
+}
+
+func TestRunner_Run_IndefiniteUntilCancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	r := &Runner{
+		Target: Target{URL: srv.URL},
+		Plan:   Plan{Concurrency: 5, Timeout: 5 * time.Second}, // no Requests, no Duration
+	}
+	sum, err := r.Run(ctx)
+	if err == nil {
+		t.Error("expected ctx error after cancel")
+	}
+	if sum == nil {
+		t.Fatal("Summary should be non-nil even on cancel")
+	}
+	if sum.TotalSent == 0 {
+		t.Error("expected some requests to have been sent before cancel")
 	}
 }
 

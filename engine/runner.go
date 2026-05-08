@@ -19,13 +19,11 @@ type Runner struct {
 // the plan completes or the context is canceled.
 //
 // Termination is whichever fires first: Plan.Duration elapsed, Plan.Requests
-// reached, or ctx canceled. At least one of Duration or Requests must be > 0.
+// reached, or ctx canceled. When neither Duration nor Requests is set the
+// run is indefinite — only ctx cancellation (typically SIGINT) will stop it.
 func (r *Runner) Run(ctx context.Context) (*Summary, error) {
 	if r.Plan.Concurrency < 1 {
 		return nil, fmt.Errorf("engine: Plan.Concurrency must be >= 1")
-	}
-	if r.Plan.Requests < 1 && r.Plan.Duration <= 0 {
-		return nil, fmt.Errorf("engine: Plan.Requests > 0 or Plan.Duration > 0 is required")
 	}
 
 	client := r.HTTPClient
