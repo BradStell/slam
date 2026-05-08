@@ -18,14 +18,14 @@ type Runner struct {
 // Run executes the configured load test, returning the final Summary when
 // the plan completes or the context is canceled.
 //
-// Currently supports request-bounded runs only (Plan.Requests > 0). Time-
-// bounded, indefinite, and rate-limited runs are added in later milestones.
+// Termination is whichever fires first: Plan.Duration elapsed, Plan.Requests
+// reached, or ctx canceled. At least one of Duration or Requests must be > 0.
 func (r *Runner) Run(ctx context.Context) (*Summary, error) {
 	if r.Plan.Concurrency < 1 {
 		return nil, fmt.Errorf("engine: Plan.Concurrency must be >= 1")
 	}
-	if r.Plan.Requests < 1 {
-		return nil, fmt.Errorf("engine: Plan.Requests must be > 0")
+	if r.Plan.Requests < 1 && r.Plan.Duration <= 0 {
+		return nil, fmt.Errorf("engine: Plan.Requests > 0 or Plan.Duration > 0 is required")
 	}
 
 	client := r.HTTPClient
@@ -58,14 +58,27 @@ func (r *Runner) Run(ctx context.Context) (*Summary, error) {
 	}()
 
 	ctxErr := func() error {
-		for i := 0; i < r.Plan.Requests; i++ {
+		var deadline <-chan time.Time
+		if r.Plan.Duration > 0 {
+			timer := time.NewTimer(r.Plan.Duration)
+			defer timer.Stop()
+			deadline = timer.C
+		}
+
+		sent := 0
+		for {
+			if r.Plan.Requests > 0 && sent >= r.Plan.Requests {
+				return nil
+			}
 			select {
 			case in <- token{ScheduledAt: time.Now()}:
+				sent++
+			case <-deadline:
+				return nil
 			case <-ctx.Done():
 				return ctx.Err()
 			}
 		}
-		return nil
 	}()
 	close(in)
 

@@ -20,7 +20,7 @@ Goal: `slam -n 100 https://example.com/` runs end-to-end and prints a sensible s
 
 Goal: full v1 surface — rate limiting, ramp, indefinite mode, all HTTP knobs, polished CLI UX.
 
-- [ ] **M2.1 — Engine: duration-bounded run.** `Plan.Duration` support; runner stops after duration elapses. Deps: M1.6. Done when: `Duration: 5s` runs ~5s.
+- [x] **M2.1 — Engine: duration-bounded run.** `Plan.Duration` support; runner stops after duration elapses. Deps: M1.6. Done when: `Duration: 5s` runs ~5s.
 - [ ] **M2.2 — Engine: indefinite run + cancel.** When `Duration=0 && Requests=0`, run until `ctx` cancels. Returns partial summary. Deps: M2.1. Done when: `ctx.Cancel()` mid-run produces summary of work done.
 - [ ] **M2.3 — Engine: scheduler with rate limit.** Token generator at `Plan.RPS`. Tokens carry `ScheduledAt`. Workers record both `ScheduledAt` and `SentAt`. Deps: M1.6. Done when: `RPS=1000` over 10s averages 1000 ± 1%.
 - [ ] **M2.4 — Engine: coordinated-omission correction.** Aggregator maintains second histogram: Response (`DoneAt - ScheduledAt`). Deps: M2.3. Done when: injecting 100ms transport stall produces visibly higher Response p99 vs Service p99.

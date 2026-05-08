@@ -118,6 +118,54 @@ func TestRunner_Run_ContextCancel(t *testing.T) {
 	}
 }
 
+func TestRunner_Run_DurationBounded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	r := &Runner{
+		Target: Target{URL: srv.URL},
+		Plan:   Plan{Concurrency: 5, Duration: 400 * time.Millisecond, Timeout: 5 * time.Second},
+	}
+	start := time.Now()
+	sum, err := r.Run(context.Background())
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if elapsed < 350*time.Millisecond || elapsed > 750*time.Millisecond {
+		t.Errorf("elapsed = %v, want ~400ms", elapsed)
+	}
+	if sum.TotalSent == 0 {
+		t.Error("expected non-zero requests in 400ms run")
+	}
+}
+
+func TestRunner_Run_RequestsBeforeDuration(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	r := &Runner{
+		Target: Target{URL: srv.URL},
+		Plan:   Plan{Concurrency: 10, Requests: 50, Duration: 30 * time.Second, Timeout: 5 * time.Second},
+	}
+	start := time.Now()
+	sum, err := r.Run(context.Background())
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("elapsed = %v, expected to finish well before 30s Duration", elapsed)
+	}
+	if sum.TotalSent != 50 {
+		t.Errorf("TotalSent = %d, want 50", sum.TotalSent)
+	}
+}
+
 type recordingReporter struct {
 	startCalled bool
 	startPlan   Plan
@@ -125,6 +173,6 @@ type recordingReporter struct {
 	finish      *Summary
 }
 
-func (r *recordingReporter) OnStart(p Plan)         { r.startCalled = true; r.startPlan = p }
-func (r *recordingReporter) OnTick(s Snapshot)      { r.ticks = append(r.ticks, s) }
-func (r *recordingReporter) OnFinish(sum *Summary)  { r.finish = sum }
+func (r *recordingReporter) OnStart(p Plan)        { r.startCalled = true; r.startPlan = p }
+func (r *recordingReporter) OnTick(s Snapshot)     { r.ticks = append(r.ticks, s) }
+func (r *recordingReporter) OnFinish(sum *Summary) { r.finish = sum }
