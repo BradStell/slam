@@ -12,7 +12,7 @@ Goal: `slam -n 100 https://example.com/` runs end-to-end and prints a sensible s
 - [x] **M1.4 — Engine: worker pool.** N goroutines pulling tokens from a channel, calling transport, sending `Result`s out. Deps: M1.3. Done when: 100 workers fire 1000 requests against test server, `-race` clean.
 - [x] **M1.5 — Engine: aggregator.** Goroutine consuming `Result`s, maintaining counters (sent, errors, status map) and one HDR histogram (service latency). Produces final `Summary`. Deps: M1.2. Done when: totals + percentiles match a known fixture.
 - [x] **M1.6 — Engine: runner orchestration (basic).** Wire workers + aggregator. Honors `Plan.Requests` and `Plan.Concurrency`. No rate limit, no duration yet. Deps: M1.3, M1.4, M1.5. Done when: `Plan{Concurrency: 10, Requests: 100}` runs and returns valid `Summary`.
-- [ ] **M1.7 — CLI: skeleton.** Cobra root command, `--version`, `--help`. Deps: M1.1. Done when: `slam --version` and `slam --help` work.
+- [x] **M1.7 — CLI: skeleton.** Cobra root command, `--version`, `--help`. Deps: M1.1. Done when: `slam --version` and `slam --help` work.
 - [ ] **M1.8 — CLI: positional URL + implicit run.** First positional URL-shaped → implicit run. Heuristic: contains `://` or matches `host[:port][/path]`. Default scheme `http://`, default path `/`. Deps: M1.7. Done when: `slam localhost:3000/foo` produces correct `Target.URL`.
 - [ ] **M1.9 — CLI: minimum flags + text summary.** Flags `-c`, `-n`. Print final summary (totals, error rate, throughput, latency percentiles). Deps: M1.6, M1.8. Done when: `slam -n 100 -c 10 http://httpbin.org/get` prints a sensible summary.
 
