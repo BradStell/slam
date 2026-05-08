@@ -46,6 +46,38 @@ func TestImplicitRunFromRoot_PrintsSummary(t *testing.T) {
 	}
 }
 
+func TestImplicitRun_CtxCancelPrintsPartialSummary(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	cmd := newRootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{srv.URL, "-c", "5"}) // indefinite
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd.SetContext(ctx)
+	go func() {
+		time.Sleep(120 * time.Millisecond)
+		cancel()
+	}()
+
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("expected nil error after ctx-cancel (graceful); got %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "requests") {
+		t.Errorf("expected partial summary; got %q", out)
+	}
+}
+
 func TestRoot_NoArgsShowsHelp(t *testing.T) {
 	var buf bytes.Buffer
 	cmd := newRootCmd()

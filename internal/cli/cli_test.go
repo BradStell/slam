@@ -2,8 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCLI_VersionFlag(t *testing.T) {
@@ -41,5 +45,24 @@ func TestCLI_HelpFlag(t *testing.T) {
 func TestRun_VersionExitsZero(t *testing.T) {
 	if code := Run([]string{"--version"}); code != 0 {
 		t.Errorf("Run([--version]) = %d, want 0", code)
+	}
+}
+
+func TestRunWithContext_GracefulCancelExitsZero(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	code := runWithContext(ctx, []string{srv.URL, "-c", "5"})
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0 for ctx-canceled run", code)
 	}
 }

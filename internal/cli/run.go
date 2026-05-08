@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -39,6 +41,9 @@ func runE(cmd *cobra.Command, args []string) error {
 	sum, runErr := runner.Run(cmd.Context())
 	if sum != nil {
 		printTextSummary(cmd.OutOrStdout(), sum)
+	}
+	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+		return nil
 	}
 	return runErr
 }
