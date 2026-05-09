@@ -29,7 +29,7 @@ Goal: full v1 surface — rate limiting, ramp, indefinite mode, all HTTP knobs, 
 - [x] **M2.7 — CLI: full flag surface.** `-r`, `-t`, `--ramp`, `-H` (repeatable), `-d`, `--body-file`, `--query` (repeatable), `--method`, `--timeout`, `--no-keepalive`, `--http2`. Deps: M2.6, M1.9. Done when: each flag plumbed end-to-end with test.
 - [x] **M2.8 — CLI: signal handling.** SIGINT/SIGTERM cancels `ctx`, runner returns partial summary, CLI prints it cleanly. Deps: M2.2, M1.9. Done when: ctrl-c during `slam url` produces a clean partial summary.
 - [x] **M2.9 — CLI: preflight line.** Print `→ METHOD URL (workers, rate, ctrl-c to stop)` before run. Deps: M1.9. Done when: preflight matches actual flags.
-- [ ] **M2.10 — CLI: live TTY output.** Reporter impl: status line refreshed ~250ms with elapsed, sent, errors, current RPS, current p99. Auto-disabled when stdout isn't a TTY. Deps: M1.9. Done when: TTY shows refreshing line; piped output is plain.
+- [x] **M2.10 — CLI: live TTY output.** Reporter impl: status line refreshed ~250ms with elapsed, sent, errors, current RPS, current p99. Auto-disabled when stdout isn't a TTY. Deps: M1.9. Done when: TTY shows refreshing line; piped output is plain.
 - [ ] **M2.11 — CLI: JSON output.** `-o json` prints final `Summary` as JSON, including compact-serialized histogram. Deps: M1.9. Done when: `slam -o json -n 10 url | jq` produces parseable JSON with all stats.
 
 ## M3 — Saturation testing

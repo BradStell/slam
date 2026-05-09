@@ -77,6 +77,30 @@ func TestRunner_Run_IndefiniteUntilCancel(t *testing.T) {
 	}
 }
 
+func TestRunner_Run_EmitsOnTickPeriodically(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	rep := &recordingReporter{}
+	r := &Runner{
+		Target:   Target{URL: srv.URL},
+		Plan:     Plan{Concurrency: 5, Duration: 600 * time.Millisecond, Timeout: 5 * time.Second},
+		Reporter: rep,
+	}
+	if _, err := r.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	// 600ms run with 250ms tick should give at least 1 tick.
+	if len(rep.ticks) < 1 {
+		t.Errorf("expected ≥1 tick over 600ms run, got %d", len(rep.ticks))
+	}
+	if len(rep.ticks) > 0 && rep.ticks[len(rep.ticks)-1].Sent == 0 {
+		t.Error("last tick should reflect non-zero Sent")
+	}
+}
+
 func TestRunner_Run_CallsReporter(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

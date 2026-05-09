@@ -39,7 +39,11 @@ func runE(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintln(cmd.OutOrStdout(), formatPreflight(target, plan))
 
-	runner := &engine.Runner{Target: target, Plan: plan}
+	runner := &engine.Runner{
+		Target:   target,
+		Plan:     plan,
+		Reporter: newTTYReporter(cmd.OutOrStdout()),
+	}
 	sum, runErr := runner.Run(cmd.Context())
 	if sum != nil {
 		printTextSummary(cmd.OutOrStdout(), sum)

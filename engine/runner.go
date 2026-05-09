@@ -55,6 +55,25 @@ func (r *Runner) Run(ctx context.Context) (*Summary, error) {
 		close(poolDone)
 	}()
 
+	stopTicker := make(chan struct{})
+	tickerDone := make(chan struct{})
+	go func() {
+		defer close(tickerDone)
+		if r.Reporter == nil {
+			return
+		}
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				r.Reporter.OnTick(agg.snapshot())
+			case <-stopTicker:
+				return
+			}
+		}
+	}()
+
 	ctxErr := schedule(ctx, in, scheduleConfig{
 		started:     started,
 		rps:         r.Plan.RPS,
@@ -66,6 +85,8 @@ func (r *Runner) Run(ctx context.Context) (*Summary, error) {
 
 	<-poolDone
 	sum := <-summaryCh
+	close(stopTicker)
+	<-tickerDone
 
 	if r.Reporter != nil {
 		r.Reporter.OnFinish(sum)
