@@ -3,12 +3,44 @@ package cli
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/bradstell/slam/engine"
 )
+
+// formatPreflight returns a one-line summary of the impending run that the
+// CLI prints before invoking the engine.
+func formatPreflight(target engine.Target, plan engine.Plan) string {
+	method := target.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+
+	parts := []string{fmt.Sprintf("%d workers", plan.Concurrency)}
+	if plan.RPS > 0 {
+		parts = append(parts, fmt.Sprintf("%d RPS", plan.RPS))
+	} else {
+		parts = append(parts, "no rate limit")
+	}
+	if plan.RampUp > 0 {
+		parts = append(parts, fmt.Sprintf("ramp %s", plan.RampUp))
+	}
+	switch {
+	case plan.Duration > 0:
+		parts = append(parts, plan.Duration.String())
+	case plan.Requests > 0:
+		parts = append(parts, fmt.Sprintf("%d reqs", plan.Requests))
+	}
+
+	line := fmt.Sprintf("→ %s %s  (%s)", method, target.URL, strings.Join(parts, ", "))
+	if plan.Duration == 0 && plan.Requests == 0 {
+		line += " — ctrl-c to stop"
+	}
+	return line
+}
 
 // printTextSummary writes a human-readable summary of a completed run.
 func printTextSummary(w io.Writer, sum *engine.Summary) {
