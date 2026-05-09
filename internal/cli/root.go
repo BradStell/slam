@@ -54,4 +54,7 @@ func addRunFlags(cmd *cobra.Command) {
 	pf.Duration("timeout", 30*time.Second, "per-request timeout")
 	pf.Bool("no-keepalive", false, "disable HTTP keep-alive")
 	pf.Bool("http2", false, "prefer HTTP/2 (h2 over TLS, h2c over cleartext)")
+
+	// Output
+	pf.StringP("output", "o", "text", "output format: text|json")
 }

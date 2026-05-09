@@ -37,16 +37,33 @@ func runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Fprintln(cmd.OutOrStdout(), formatPreflight(target, plan))
-
-	runner := &engine.Runner{
-		Target:   target,
-		Plan:     plan,
-		Reporter: newTTYReporter(cmd.OutOrStdout()),
+	output, _ := cmd.Flags().GetString("output")
+	switch output {
+	case "text", "json":
+	default:
+		return fmt.Errorf("--output must be 'text' or 'json' (got %q)", output)
 	}
+	jsonMode := output == "json"
+
+	out := cmd.OutOrStdout()
+	if !jsonMode {
+		fmt.Fprintln(out, formatPreflight(target, plan))
+	}
+
+	runner := &engine.Runner{Target: target, Plan: plan}
+	if !jsonMode {
+		runner.Reporter = newTTYReporter(out)
+	}
+
 	sum, runErr := runner.Run(cmd.Context())
 	if sum != nil {
-		printTextSummary(cmd.OutOrStdout(), sum)
+		if jsonMode {
+			if err := printJSONSummary(out, sum); err != nil {
+				return err
+			}
+		} else {
+			printTextSummary(out, sum)
+		}
 	}
 	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
 		return nil
